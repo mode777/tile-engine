@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+    "strict": true,
+    "types": [],
+    "baseUrl": ".",
+    "paths": {
+      "@protocol/*": ["../extension/src/protocol/*"]
+    }
+  },
+  "include": ["src", "../extension/src/protocol/messages.ts"]
+}

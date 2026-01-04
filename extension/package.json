@@ -1,0 +1,40 @@
+{
+  "name": "tile-engine-extension",
+  "displayName": "Tile Engine Asset Editor",
+  "description": "Custom editor for .asset JSON files with plugin-based UI",
+  "version": "0.0.1",
+  "publisher": "your-name",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [
+    "onCustomEditor:tile-engine.assetEditor"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "tile-engine.assetEditor",
+        "displayName": "Tile Engine Asset Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.asset"
+          }
+        ],
+        "priority": "default"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.0",
+    "typescript": "^5.3.3",
+    "@types/vscode": "^1.85.0"
+  }
+}
