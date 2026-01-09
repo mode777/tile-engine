@@ -3,18 +3,27 @@ import {
   AssetEditorPluginDescriptor,
   AssetData,
   StandaloneToolPlugin,
-  HeadlessTool,
-  Plugin
-} from "./asset-editor-plugin";
-import { exampleAssetPlugin } from "./example/example-asset-plugin";
-import { assetGeneratorTool } from "./example/asset-generator-tool";
-import { spriteFontTool } from "./sprite-font-tool";
-import { spriteFontPreviewPlugin } from "./spritefont-preview-plugin";
-import { tilesetTool } from "./tools/tileset-tool";
+  HeadlessTool
+} from "./types";
 
-const editorPlugins: AssetEditorPlugin[] = [exampleAssetPlugin, spriteFontPreviewPlugin];
-const toolPlugins: StandaloneToolPlugin[] = [assetGeneratorTool, spriteFontTool];
-const headlessTools: HeadlessTool[] = [tilesetTool];
+// Plugin storage - populated by setupPluginRegistry()
+let editorPlugins: AssetEditorPlugin[] = [];
+let toolPlugins: StandaloneToolPlugin[] = [];
+let headlessTools: HeadlessTool[] = [];
+
+/**
+ * Initialize the plugin registry with plugins.
+ * Called once during extension activation.
+ */
+export function initializeRegistry(
+  editors: AssetEditorPlugin[],
+  tools: StandaloneToolPlugin[],
+  headless: HeadlessTool[]
+): void {
+  editorPlugins = editors;
+  toolPlugins = tools;
+  headlessTools = headless;
+}
 
 // ===== Editor Plugin Functions =====
 

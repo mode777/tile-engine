@@ -1,4 +1,4 @@
-import { StandaloneToolPlugin } from "../asset-editor-plugin";
+import { StandaloneToolPlugin } from "../../plugin-system/types";
 
 export const assetGeneratorTool: StandaloneToolPlugin = {
   metadata: {

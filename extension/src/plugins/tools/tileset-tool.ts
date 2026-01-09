@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { HeadlessTool } from "../asset-editor-plugin";
+import { HeadlessTool } from "../../plugin-system/types";
 
 export const tilesetTool: HeadlessTool = {
   metadata: {

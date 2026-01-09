@@ -45,4 +45,7 @@ export interface HeadlessTool {
   readonly execute: (context: vscode.ExtensionContext) => Promise<void>;
 }
 
-export type Plugin = AssetEditorPlugin | StandaloneToolPlugin | HeadlessTool;
+export type Plugin =
+  | AssetEditorPlugin
+  | StandaloneToolPlugin
+  | HeadlessTool;

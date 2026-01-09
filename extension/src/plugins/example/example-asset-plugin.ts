@@ -1,4 +1,4 @@
-import { AssetData, AssetEditorPlugin } from "../asset-editor-plugin";
+import { AssetData, AssetEditorPlugin } from "../../plugin-system/types";
 
 export interface ExampleAsset extends AssetData {
   type: "example";

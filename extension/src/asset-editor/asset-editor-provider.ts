@@ -1,13 +1,14 @@
 import * as vscode from "vscode";
-import * as path from "path";
 import {
   HostToWebviewMessage,
   WebviewToHostMessage
 } from "../protocol/messages";
 import { AssetDocument } from "./asset-document";
-import { getPluginDescriptor } from "../plugins/registry";
+import { getPluginDescriptor } from "../plugin-system/registry";
+import { BaseWebviewProvider } from "../framework/base-webview-provider";
+import { AssetEditorHandlers } from "./handlers";
 
-export class AssetEditorProvider
+export class AssetEditorProvider extends BaseWebviewProvider
   implements vscode.CustomEditorProvider<AssetDocument>
 {
   public static readonly viewType = "tile-engine.assetEditor";
@@ -18,7 +19,15 @@ export class AssetEditorProvider
   public readonly onDidChangeCustomDocument =
     this.onDidChangeCustomDocumentEmitter.event;
 
-  constructor(private readonly context: vscode.ExtensionContext) {}
+  private handlers: AssetEditorHandlers | undefined;
+
+  constructor(context: vscode.ExtensionContext) {
+    super(context, async (message: WebviewToHostMessage) => {
+      if (this.handlers) {
+        await this.handlers.dispatch(message);
+      }
+    });
+  }
 
   public static register(context: vscode.ExtensionContext): vscode.Disposable {
     const provider = new AssetEditorProvider(context);
@@ -53,9 +62,12 @@ export class AssetEditorProvider
       ]
     };
 
-    webview.html = this.getHtmlForWebview(webview);
+    webview.html = this.getHtmlForWebview(webview, "Asset Editor");
 
     const plugin = getPluginDescriptor(document.data.type);
+
+    // Set up handlers for this document
+    this.handlers = new AssetEditorHandlers(document, webview, this.context);
 
     const postInit = () => {
       const message: HostToWebviewMessage = {
@@ -69,38 +81,10 @@ export class AssetEditorProvider
 
     const messageSubscription = webview.onDidReceiveMessage(
       async (message: WebviewToHostMessage) => {
-        switch (message.kind) {
-          case "ready": {
-            postInit();
-            break;
-          }
-          case "contentChanged": {
-            document.update(message.content);
-            this.onDidChangeCustomDocumentEmitter.fire({
-              document
-            });
-            break;
-          }
-          case "requestSave": {
-            await this.saveCustomDocument(document);
-            break;
-          }
-          case "readFile": {
-            await this.handleReadFile(webview, document.uri, message.requestId, message.relativePath);
-            break;
-          }
-          case "readImage": {
-            await this.handleReadImage(webview, document.uri, message.requestId, message.relativePath);
-            break;
-          }
-          case "pickFile": {
-            await this.handlePickFile(webview, document.uri, message.requestId, message.options);
-            break;
-          }
-          default: {
-            // No-op for unknown messages to keep the channel resilient.
-            break;
-          }
+        if (message.kind === "ready") {
+          postInit();
+        } else {
+          await this.handlers?.dispatch(message);
         }
       }
     );
@@ -116,6 +100,7 @@ export class AssetEditorProvider
     webviewPanel.onDidDispose(() => {
       messageSubscription.dispose();
       changeSubscription.dispose();
+      this.handlers = undefined;
     });
   }
 
@@ -165,197 +150,4 @@ export class AssetEditorProvider
       delete: () => vscode.workspace.fs.delete(context.destination)
     };
   }
-
-  private getHtmlForWebview(webview: vscode.Webview): string {
-    const scriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.context.extensionUri, "webview", "dist", "main.js")
-    );
-
-    const nonce = getNonce();
-
-    const csp = [
-      "default-src 'none'",
-      `img-src ${webview.cspSource} blob: data:`,
-      `style-src 'nonce-${nonce}' 'unsafe-inline' ${webview.cspSource}`,
-      `script-src 'nonce-${nonce}'`,
-      `connect-src ${webview.cspSource} https://*.vscode-cdn.net`
-    ].join("; ");
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="${csp}">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Asset Editor</title>
-</head>
-<body>
-  <div id="root"></div>
-  <script nonce="${nonce}">window.__webviewNonce__ = "${nonce}";</script>
-  <script nonce="${nonce}" type="module" src="${scriptUri}"></script>
-</body>
-</html>`;
-  }
-
-  private async handleReadFile(
-    webview: vscode.Webview,
-    documentUri: vscode.Uri,
-    requestId: string,
-    relativePath: string
-  ): Promise<void> {
-    try {
-      // Ensure path is relative for portability
-      const normalized = path.normalize(relativePath);
-      if (path.isAbsolute(normalized)) {
-        throw new Error("Invalid path: must use relative paths for portability");
-      }
-
-      const docDir = vscode.Uri.joinPath(documentUri, "..");
-      const targetUri = vscode.Uri.joinPath(docDir, normalized);
-
-      const bytes = await vscode.workspace.fs.readFile(targetUri);
-      const content = Buffer.from(bytes).toString("utf8");
-
-      const message: HostToWebviewMessage = {
-        kind: "fileContent",
-        requestId,
-        success: true,
-        content
-      };
-      webview.postMessage(message);
-    } catch (error) {
-      const message: HostToWebviewMessage = {
-        kind: "fileContent",
-        requestId,
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error reading file"
-      };
-      webview.postMessage(message);
-    }
-  }
-
-  private async handleReadImage(
-    webview: vscode.Webview,
-    documentUri: vscode.Uri,
-    requestId: string,
-    relativePath: string
-  ): Promise<void> {
-    try {
-      // Ensure path is relative for portability
-      const normalized = path.normalize(relativePath);
-      if (path.isAbsolute(normalized)) {
-        throw new Error("Invalid path: must use relative paths for portability");
-      }
-
-      const docDir = vscode.Uri.joinPath(documentUri, "..");
-      const targetUri = vscode.Uri.joinPath(docDir, normalized);
-
-      const bytes = await vscode.workspace.fs.readFile(targetUri);
-      const base64 = Buffer.from(bytes).toString("base64");
-
-      // Infer MIME type from file extension
-      const ext = path.extname(relativePath).toLowerCase();
-      const mimeType = this.getMimeType(ext);
-      const dataUrl = `data:${mimeType};base64,${base64}`;
-
-      const message: HostToWebviewMessage = {
-        kind: "imageData",
-        requestId,
-        success: true,
-        dataUrl
-      };
-      webview.postMessage(message);
-    } catch (error) {
-      const message: HostToWebviewMessage = {
-        kind: "imageData",
-        requestId,
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error reading image"
-      };
-      webview.postMessage(message);
-    }
-  }
-
-  private getMimeType(ext: string): string {
-    const mimeTypes: Record<string, string> = {
-      ".png": "image/png",
-      ".jpg": "image/jpeg",
-      ".jpeg": "image/jpeg",
-      ".gif": "image/gif",
-      ".webp": "image/webp",
-      ".svg": "image/svg+xml",
-      ".bmp": "image/bmp",
-      ".ico": "image/x-icon"
-    };
-    return mimeTypes[ext] || "application/octet-stream";
-  }
-
-  private async handlePickFile(
-    webview: vscode.Webview,
-    documentUri: vscode.Uri,
-    requestId: string,
-    options?: {
-      canSelectMany?: boolean;
-      openLabel?: string;
-      filters?: Record<string, string[]>;
-      defaultUri?: string;
-    }
-  ): Promise<void> {
-    try {
-      const docDir = vscode.Uri.joinPath(documentUri, "..");
-      
-      const pickerOptions: vscode.OpenDialogOptions = {
-        canSelectMany: options?.canSelectMany ?? false,
-        openLabel: options?.openLabel ?? "Select",
-        defaultUri: options?.defaultUri ? vscode.Uri.file(options.defaultUri) : docDir
-      };
-
-      if (options?.filters) {
-        pickerOptions.filters = options.filters;
-      }
-
-      const result = await vscode.window.showOpenDialog(pickerOptions);
-
-      if (result && result.length > 0) {
-        // Convert absolute URIs to paths relative to the document directory for portability
-        const relativePaths = result.map(uri => {
-          const relative = path.relative(docDir.fsPath, uri.fsPath);
-          // Normalize to forward slashes for consistency
-          return relative.replace(/\\/g, "/");
-        });
-
-        const message: HostToWebviewMessage = {
-          kind: "filePicked",
-          requestId,
-          success: true,
-          paths: relativePaths
-        };
-        webview.postMessage(message);
-      } else {
-        // User cancelled
-        const message: HostToWebviewMessage = {
-          kind: "filePicked",
-          requestId,
-          success: false,
-          error: "File selection cancelled"
-        };
-        webview.postMessage(message);
-      }
-    } catch (error) {
-      const message: HostToWebviewMessage = {
-        kind: "filePicked",
-        requestId,
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error picking file"
-      };
-      webview.postMessage(message);
-    }
-  }
-}
-
-function getNonce(): string {
-  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  return Array.from({ length: 32 })
-    .map(() => possible.charAt(Math.floor(Math.random() * possible.length)))
-    .join("");
 }

@@ -1,9 +1,12 @@
 import * as vscode from "vscode";
 import { AssetEditorProvider } from "./asset-editor/asset-editor-provider";
 import { StandaloneToolProvider } from "./tool/standalone-tool-provider";
-import { getToolPlugins, getHeadlessTools } from "./plugins/registry";
+import { setupPluginRegistry, getToolPlugins, getHeadlessTools } from "./plugin-system/plugin-registry-setup";
 
 export function activate(context: vscode.ExtensionContext): void {
+  // Set up plugin registry - single point of registration
+  setupPluginRegistry();
+
   // Register custom editor for file-based asset editing
   context.subscriptions.push(AssetEditorProvider.register(context));
 

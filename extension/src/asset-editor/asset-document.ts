@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { AssetData } from "../plugins/asset-editor-plugin";
+import { AssetData } from "../plugin-system/types";
 import { isAssetJson } from "../protocol/messages";
 
 export class AssetDocument implements vscode.CustomDocument {

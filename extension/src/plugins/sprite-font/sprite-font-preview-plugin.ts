@@ -1,4 +1,4 @@
-import { AssetEditorPlugin, AssetData } from "./asset-editor-plugin";
+import { AssetEditorPlugin, AssetData } from "../../plugin-system/types";
 
 interface SpriteFontAsset extends AssetData {
   type: "spritefont";

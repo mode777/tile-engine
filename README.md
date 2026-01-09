@@ -55,16 +55,16 @@ The extension now supports **two types of plugins**:
 - Lifecycle hooks (`onOpen`, `onClose`) are invoked when panel opens/closes.
 
 ### Plugin Resolution
-- Plugins are registered at build time; no runtime discovery.
-- Host metadata registry: `extension/src/plugins/registry.ts`
-  - Editor plugins: `getPluginDescriptor(type)`, `listPlugins()`, `hasPlugin(type)`
-  - Tool plugins: `getToolPlugins()`, `getToolPlugin(type)`
+- Plugins are registered at **compile-time in a single location**: `extension/src/plugin-system/plugin-registry-setup.ts`
+- No runtime discovery; all plugins must be explicitly imported and initialized during activation.
+- Host registry access via `extension/src/plugin-system/registry.ts`:
+  - Editor plugins: `getPluginDescriptor(type)`, `listPlugins()`, `hasPlugin(type)`, `getDefaultContentForType(type)`
+  - Standalone tools: `getToolPlugins()`, `getToolPlugin(type)`
+  - Headless tools: `getHeadlessTools()`, `getHeadlessTool(type)`
 - WebView runtime registry: `webview/src/plugins/registry.ts`
   - Editor plugins: `resolvePlugin.register(plugin)`
-  - Tool plugins: `resolvePlugin.registerTool(plugin)`
+  - Standalone tools: `resolvePlugin.registerTool(plugin)`
   - Lookup: `resolvePlugin.get(type)` (checks both registries)
-- Example editor plugin: type `"example"` defined in `extension/src/plugins/example/example-asset-plugin.ts` and UI in `webview/src/plugins/example/example-asset-plugin.tsx`.
-- Example tool plugin: type `"asset-generator"` defined in `extension/src/plugins/example/asset-generator-tool.ts` and UI in `webview/src/plugins/example/asset-generator-tool.tsx`.
 
 ### Messaging Protocol
 Defined in `extension/src/protocol/messages.ts` and shared with the WebView via Vite alias `@protocol`.
@@ -88,8 +88,15 @@ Defined in `extension/src/protocol/messages.ts` and shared with the WebView via 
 - `showNotification`: Display VS Code notification toast (tool mode)
 
 ### Adding a New Editor Plugin
-1. **Host metadata**: Create `extension/src/plugins/<YourPlugin>.ts` exporting `AssetEditorPlugin` with:
+1. **Host metadata**: Create `extension/src/plugins/<category>/<your-plugin>.ts` exporting `AssetEditorPlugin` with:
    ```typescript
+   import { AssetEditorPlugin } from "../../plugin-system/types";
+
+   export interface YourAsset extends AssetData {
+     type: "your-type";
+     // ... additional fields
+   }
+
    export const yourPlugin: AssetEditorPlugin<YourAsset> = {
      metadata: {
        mode: "editor",
@@ -100,40 +107,33 @@ Defined in `extension/src/protocol/messages.ts` and shared with the WebView via 
      createDefault: () => ({ type: "your-type", /* ... */ })
    };
    ```
-   Register it in `extension/src/plugins/registry.ts` in the `editorPlugins` array.
 
-2. **WebView UI**: Create `webview/src/plugins/<your>/your-plugin.tsx` exporting `WebviewAssetPlugin` with Solid component:
-   ```tsx
-   export const yourPlugin: WebviewAssetPlugin<YourAsset> = {
-3. **Data contract**: Ensure your JSON includes `{"type": "your-type"}` and any additional fields.
-4. **Build**: Rebuild WebView (`npm run build` in `webview`) and extension (`npm run compile` in `extension`).
- 1. **Editor Plugins** (mode: `"editor"`): File-based custom editors that open and edit `.asset` files
-    - Activated when opening files matching `*.asset`
-    - Tied to a specific document/file
-    - Support save/revert operations
-    - File operations are relative to the document's directory
- 
- 2. **Standalone Tools** (mode: `"tool"`): Command-triggered webviews that perform workspace-wide operations
-    - Activated via Command Palette (e.g., "Tile Engine: Generate Asset")
-    - Not tied to any specific file
-    - Can read/write any workspace file using absolute or workspace-relative paths
-    - Singleton instances (re-opening focuses existing panel)
-    - Support lifecycle hooks (`onOpen`, `onClose`)
- 
- 3. **Headless Tools** (mode: `"headless"`): Command-triggered tools without a webview UI
-    - Activated via Command Palette (e.g., "Tile Engine: Create Tileset")
-    - Execute logic directly without displaying a UI panel
-    - Can prompt for input/output using VS Code's native dialogs (`showSaveDialog`, `showInputBox`, etc.)
-    - Useful for simple file generation, batch operations, or quick workflows
-    - Execute synchronously without state management
- 
- ### Custom Editor Flow (Editor Plugins)
+2. **Register in plugin-system**: Add import and registration in `extension/src/plugin-system/plugin-registry-setup.ts`:
+   ```typescript
+   import { yourPlugin } from "../plugins/<category>/<your-plugin>";
+   
+   // Inside setupPluginRegistry():
+   const editorPlugins: AssetEditorPlugin[] = [
+     // ... existing plugins
+     yourPlugin
+   ];
+   ```
+
+3. **WebView UI**: Create `webview/src/plugins/<category>/<your-plugin>.tsx` exporting `WebviewAssetPlugin` with Solid component.
+
+4. **Data contract**: Ensure your JSON includes `{"type": "your-type"}` and any additional fields.
+
+5. **Build**: Rebuild WebView (`npm run build` in `webview`) and extension (`npm run compile` in `extension`).
 
 ### Adding a New Standalone Tool
-1. **Host metadata**: Create `extension/src/plugins/tools/<your-tool>.ts` exporting `StandaloneToolPlugin`:
+1. **Host metadata**: Create `extension/src/plugins/<category>/<your-tool>.ts` exporting `StandaloneToolPlugin`:
+   ```typescript
+   import { StandaloneToolPlugin } from "../../plugin-system/types";
+
+   export const yourTool: StandaloneToolPlugin = {
      metadata: {
        mode: "tool",
- - Headless tools: `getHeadlessTools()`, `getHeadlessTool(type)`
+       type: "your-tool",
        commandId: "tile-engine.tools.yourTool", // Must start with "tile-engine.tools."
        title: "Your Tool Name",
        description: "Description of your tool"
@@ -142,9 +142,19 @@ Defined in `extension/src/protocol/messages.ts` and shared with the WebView via 
      onClose: () => { /* Optional cleanup */ }
    };
    ```
-   Register it in `extension/src/plugins/registry.ts` in the `toolPlugins` array.
 
-2. **WebView UI**: Create `webview/src/plugins/tools/<your-tool>.tsx` exporting `WebviewAssetPlugin`:
+2. **Register in plugin-system**: Add import and registration in `extension/src/plugin-system/plugin-registry-setup.ts`:
+   ```typescript
+   import { yourTool } from "../plugins/<category>/<your-tool>";
+   
+   // Inside setupPluginRegistry():
+   const toolPlugins: StandaloneToolPlugin[] = [
+     // ... existing tools
+     yourTool
+   ];
+   ```
+
+3. **WebView UI**: Create `webview/src/plugins/<category>/<your-tool>.tsx` exporting `WebviewAssetPlugin`:
    ```tsx
    export const yourToolPlugin: WebviewAssetPlugin<YourToolData> = {
      metadata: { type: "your-tool", title: "Your Tool Name" },
@@ -153,7 +163,7 @@ Defined in `extension/src/protocol/messages.ts` and shared with the WebView via 
    ```
    Register it in `webview/src/plugins/registry.ts` in the `registeredToolPlugins` array.
 
-3. **Command registration**: Add the command to `extension/package.json`:
+4. **Command registration**: Add the command to `extension/package.json`:
    ```json
    {
      "contributes": {
@@ -167,12 +177,12 @@ Defined in `extension/src/protocol/messages.ts` and shared with the WebView via 
    }
    ```
 
-4. **Build**: Rebuild WebView and extension as above.
+5. **Build**: Rebuild WebView and extension as above.
 ### Adding a New Headless Tool
-1. **Host metadata**: Create `extension/src/plugins/tools/<your-tool>.ts` exporting `HeadlessTool`:
+1. **Host metadata**: Create `extension/src/plugins/<category>/<your-tool>.ts` exporting `HeadlessTool`:
    ```typescript
    import * as vscode from "vscode";
-   import { HeadlessTool } from "../asset-editor-plugin";
+   import { HeadlessTool } from "../../plugin-system/types";
 
    export const yourTool: HeadlessTool = {
      metadata: {
@@ -193,9 +203,19 @@ Defined in `extension/src/protocol/messages.ts` and shared with the WebView via 
      }
    };
    ```
-   Register it in `extension/src/plugins/registry.ts` in the `headlessTools` array.
 
-2. **Command registration**: Add the command to `extension/package.json`:
+2. **Register in plugin-system**: Add import and registration in `extension/src/plugin-system/plugin-registry-setup.ts`:
+   ```typescript
+   import { yourTool } from "../plugins/<category>/<your-tool>";
+   
+   // Inside setupPluginRegistry():
+   const headlessTools: HeadlessTool[] = [
+     // ... existing tools
+     yourTool
+   ];
+   ```
+
+3. **Command registration**: Add the command to `extension/package.json`:
    ```json
    {
      "contributes": {
@@ -209,7 +229,7 @@ Defined in `extension/src/protocol/messages.ts` and shared with the WebView via 
    }
    ```
 
-3. **Build**: Rebuild the extension (`npm run compile` in `extension`). No webview build is needed.
+4. **Build**: Rebuild the extension (`npm run compile` in `extension`). No webview build is needed.
 
 
 ### File and Image Reading (Editor Mode)
