@@ -18,11 +18,16 @@ const pendingRequests = new Map<
 >();
 
 /**
- * Read a text file relative to the currently edited document.
- * @param relativePath Path relative to the document directory (e.g., "../sibling.json")
- * @returns The file contents as a string
+ * Read a file.
+ * Works in both asset editor mode (relative to document) and tool mode (relative to workspace).
+ * @param filePath Path to the file (relative or workspace-relative)
+ * @param encoding Text or binary encoding (binary returns Base64 string)
+ * @returns The file contents as a string (Base64 if encoding is binary)
  */
-export function readFile(relativePath: string): Promise<string> {
+export function readFile(
+  filePath: string,
+  encoding: "text" | "binary" = "text"
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const requestId = String(requestIdCounter++);
     pendingRequests.set(requestId, { resolve: resolve as (value: string | string[]) => void, reject });
@@ -30,25 +35,27 @@ export function readFile(relativePath: string): Promise<string> {
     vscode.postMessage({
       kind: "readFile",
       requestId,
-      relativePath
+      filePath,
+      encoding
     });
 
     // Timeout after 10 seconds
     setTimeout(() => {
       if (pendingRequests.has(requestId)) {
         pendingRequests.delete(requestId);
-        reject(new Error(`Timeout reading file: ${relativePath}`));
+        reject(new Error(`Timeout reading file: ${filePath}`));
       }
     }, 10000);
   });
 }
 
 /**
- * Read an image file relative to the currently edited document.
- * @param relativePath Path relative to the document directory (e.g., "../assets/icon.png")
+ * Read an image file and return as a data URL.
+ * Works in both asset editor mode (relative to document) and tool mode (relative to workspace).
+ * @param filePath Path to the image file (relative or workspace-relative)
  * @returns A data URL that can be used as an image src
  */
-export function readImage(relativePath: string): Promise<string> {
+export function readImage(filePath: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const requestId = String(requestIdCounter++);
     pendingRequests.set(requestId, { resolve: resolve as (value: string | string[]) => void, reject });
@@ -56,21 +63,67 @@ export function readImage(relativePath: string): Promise<string> {
     vscode.postMessage({
       kind: "readImage",
       requestId,
-      relativePath
+      filePath
     });
 
     // Timeout after 10 seconds
     setTimeout(() => {
       if (pendingRequests.has(requestId)) {
         pendingRequests.delete(requestId);
-        reject(new Error(`Timeout reading image: ${relativePath}`));
+        reject(new Error(`Timeout reading image: ${filePath}`));
       }
     }, 10000);
   });
 }
 
 /**
- * Handle responses from the host for file/image read requests.
+ * Write a file.
+ * Works in both asset editor mode (relative to document) and tool mode (relative to workspace).
+ * @param filePath Path to the file (relative or workspace-relative)
+ * @param content File content (Base64 string if encoding is binary)
+ * @param encoding Text or binary encoding
+ */
+export function writeFile(
+  filePath: string,
+  content: string,
+  encoding: "text" | "binary" = "text"
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const requestId = String(requestIdCounter++);
+    pendingRequests.set(requestId, { 
+      resolve: () => resolve() as unknown as (value: string | string[]) => void, 
+      reject 
+    });
+
+    vscode.postMessage({
+      kind: "writeFile",
+      requestId,
+      filePath,
+      content,
+      encoding
+    });
+
+    setTimeout(() => {
+      if (pendingRequests.has(requestId)) {
+        pendingRequests.delete(requestId);
+        reject(new Error(`Timeout writing file: ${filePath}`));
+      }
+    }, 10000);
+  });
+}
+
+/**
+ * @deprecated Use `readFile` instead - path context is now handled automatically
+ */
+export const readWorkspaceFile = readFile;
+
+/**
+ * @deprecated Use `writeFile` instead - path context is now handled automatically
+ */
+export const writeWorkspaceFile = writeFile;
+
+/**
+ * Handle responses from the host for file/image read/write requests.
  * Call this in your message handler.
  */
 export function handleFileUtilsMessage(message: HostToWebviewMessage): void {
@@ -104,17 +157,7 @@ export function handleFileUtilsMessage(message: HostToWebviewMessage): void {
         pending.reject(new Error(message.error));
       }
     }
-  } else if (message.kind === "workspaceFileContent") {
-    const pending = pendingRequests.get(message.requestId);
-    if (pending) {
-      pendingRequests.delete(message.requestId);
-      if (message.success) {
-        pending.resolve(message.content);
-      } else {
-        pending.reject(new Error(message.error));
-      }
-    }
-  } else if (message.kind === "workspaceFileWritten") {
+  } else if (message.kind === "fileWritten") {
     const pending = pendingRequests.get(message.requestId);
     if (pending) {
       pendingRequests.delete(message.requestId);
@@ -150,7 +193,7 @@ export interface FilePickerOptions {
 
 /**
  * Show VS Code's native file picker and return selected file paths.
- * Paths are returned relative to the currently edited document's directory.
+ * Works in both asset editor mode (paths relative to document) and tool mode (workspace-relative paths).
  * @param options Configuration for the file picker
  * @returns Array of relative paths to selected files (or single-element array if canSelectMany is false)
  */
@@ -172,73 +215,6 @@ export function pickFile(options?: FilePickerOptions): Promise<string[]> {
         reject(new Error("Timeout waiting for file selection"));
       }
     }, 30000);
-  });
-}
-
-/**
- * Read a file from the workspace (absolute or workspace-relative path).
- * Only available in standalone tool mode.
- * @param path Absolute path or workspace-relative path (e.g., "assets/data.json")
- * @param encoding Text or binary encoding (binary returns Base64 string)
- * @returns The file contents
- */
-export function readWorkspaceFile(
-  path: string,
-  encoding: "text" | "binary" = "text"
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const requestId = String(requestIdCounter++);
-    pendingRequests.set(requestId, { resolve: resolve as (value: string | string[]) => void, reject });
-
-    vscode.postMessage({
-      kind: "readWorkspaceFile",
-      requestId,
-      path,
-      encoding
-    });
-
-    setTimeout(() => {
-      if (pendingRequests.has(requestId)) {
-        pendingRequests.delete(requestId);
-        reject(new Error(`Timeout reading workspace file: ${path}`));
-      }
-    }, 10000);
-  });
-}
-
-/**
- * Write a file to the workspace (absolute or workspace-relative path).
- * Only available in standalone tool mode.
- * @param path Absolute path or workspace-relative path
- * @param content File content (Base64 string if encoding is binary)
- * @param encoding Text or binary encoding
- */
-export function writeWorkspaceFile(
-  path: string,
-  content: string,
-  encoding: "text" | "binary" = "text"
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const requestId = String(requestIdCounter++);
-    pendingRequests.set(requestId, { 
-      resolve: () => resolve() as unknown as (value: string | string[]) => void, 
-      reject 
-    });
-
-    vscode.postMessage({
-      kind: "writeWorkspaceFile",
-      requestId,
-      path,
-      content,
-      encoding
-    });
-
-    setTimeout(() => {
-      if (pendingRequests.has(requestId)) {
-        pendingRequests.delete(requestId);
-        reject(new Error(`Timeout writing workspace file: ${path}`));
-      }
-    }, 10000);
   });
 }
 
@@ -297,3 +273,4 @@ export function showNotification(
     message
   });
 }
+

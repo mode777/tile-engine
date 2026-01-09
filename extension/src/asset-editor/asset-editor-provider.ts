@@ -6,7 +6,8 @@ import {
 import { AssetDocument } from "./asset-document";
 import { getPluginDescriptor } from "../plugin-system/registry";
 import { BaseWebviewProvider } from "../framework/base-webview-provider";
-import { AssetEditorHandlers } from "./handlers";
+import { AssetEditorHandler } from "./asset-editor-handler";
+import { DocumentPathContext } from "../framework/path-context";
 
 export class AssetEditorProvider extends BaseWebviewProvider
   implements vscode.CustomEditorProvider<AssetDocument>
@@ -19,7 +20,7 @@ export class AssetEditorProvider extends BaseWebviewProvider
   public readonly onDidChangeCustomDocument =
     this.onDidChangeCustomDocumentEmitter.event;
 
-  private handlers: AssetEditorHandlers | undefined;
+  private handlers: AssetEditorHandler | undefined;
 
   constructor(context: vscode.ExtensionContext) {
     super(context, async (message: WebviewToHostMessage) => {
@@ -67,7 +68,8 @@ export class AssetEditorProvider extends BaseWebviewProvider
     const plugin = getPluginDescriptor(document.data.type);
 
     // Set up handlers for this document
-    this.handlers = new AssetEditorHandlers(document, webview, this.context);
+    const pathContext = new DocumentPathContext(document.uri);
+    this.handlers = new AssetEditorHandler(document, webview, this.context, pathContext);
 
     const postInit = () => {
       const message: HostToWebviewMessage = {

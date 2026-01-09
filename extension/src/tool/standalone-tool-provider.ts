@@ -4,7 +4,8 @@ import {
   WebviewToHostMessage
 } from "../protocol/messages";
 import { StandaloneToolPlugin } from "../plugin-system/types";
-import { StandaloneToolHandlers } from "./handlers";
+import { StandaloneToolHandler } from "./standalone-tool-handler";
+import { WorkspacePathContext } from "../framework/path-context";
 import { generateHtmlWithCSP } from "../framework/html-generator";
 
 /**
@@ -13,7 +14,7 @@ import { generateHtmlWithCSP } from "../framework/html-generator";
  */
 export class StandaloneToolProvider {
   private readonly openPanels = new Map<string, vscode.WebviewPanel>();
-  private readonly handlersMap = new Map<string, StandaloneToolHandlers>();
+  private readonly handlersMap = new Map<string, StandaloneToolHandler>();
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -50,7 +51,8 @@ export class StandaloneToolProvider {
     );
 
     // Create handlers for this panel
-    const handlers = new StandaloneToolHandlers(panel.webview, this.context);
+    const pathContext = new WorkspacePathContext(this.context);
+    const handlers = new StandaloneToolHandler(panel.webview, this.context, pathContext);
     this.handlersMap.set(plugin.metadata.commandId, handlers);
 
     const postInit = () => {

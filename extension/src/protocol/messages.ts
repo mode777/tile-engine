@@ -67,24 +67,12 @@ export type HostToWebviewMessage =
       error: string;
     }
   | {
-      kind: "workspaceFileContent";
-      requestId: string;
-      success: true;
-      content: string;
-    }
-  | {
-      kind: "workspaceFileContent";
-      requestId: string;
-      success: false;
-      error: string;
-    }
-  | {
-      kind: "workspaceFileWritten";
+      kind: "fileWritten";
       requestId: string;
       success: true;
     }
   | {
-      kind: "workspaceFileWritten";
+      kind: "fileWritten";
       requestId: string;
       success: false;
       error: string;
@@ -112,12 +100,20 @@ export type WebviewToHostMessage =
   | {
       kind: "readFile";
       requestId: string;
-      relativePath: string;
+      filePath: string;
+      encoding?: "text" | "binary";
     }
   | {
       kind: "readImage";
       requestId: string;
-      relativePath: string;
+      filePath: string;
+    }
+  | {
+      kind: "writeFile";
+      requestId: string;
+      filePath: string;
+      content: string;
+      encoding: "text" | "binary";
     }
   | {
       kind: "pickFile";
@@ -128,19 +124,6 @@ export type WebviewToHostMessage =
         filters?: Record<string, string[]>;
         defaultUri?: string;
       };
-    }
-  | {
-      kind: "readWorkspaceFile";
-      requestId: string;
-      path: string;
-      encoding: "text" | "binary";
-    }
-  | {
-      kind: "writeWorkspaceFile";
-      requestId: string;
-      path: string;
-      content: string;
-      encoding: "text" | "binary";
     }
   | {
       kind: "showSaveDialog";
