@@ -10,8 +10,9 @@
     "types": [],
     "baseUrl": ".",
     "paths": {
-      "@protocol/*": ["../extension/src/protocol/*"]
+      "@protocol/*": ["../extension/src/protocol/*"],
+      "@common/*": ["../common/src/*"]
     }
   },
-  "include": ["src", "../extension/src/protocol/messages.ts"]
+  "include": ["src", "../extension/src/protocol/messages.ts", "../common/src/**/*"]
 }

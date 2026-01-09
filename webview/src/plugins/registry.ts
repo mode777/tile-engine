@@ -12,14 +12,20 @@ export interface WebviewAssetPlugin<T extends AssetJson = AssetJson> {
   Component: Component<PluginComponentProps<T>>;
 }
 
-const registry = new Map<string, WebviewAssetPlugin>();
+const editorRegistry = new Map<string, WebviewAssetPlugin>();
+const toolRegistry = new Map<string, WebviewAssetPlugin>();
 
 function register(plugin: WebviewAssetPlugin): void {
-  registry.set(plugin.metadata.type, plugin);
+  editorRegistry.set(plugin.metadata.type, plugin);
+}
+
+function registerTool(plugin: WebviewAssetPlugin): void {
+  toolRegistry.set(plugin.metadata.type, plugin);
 }
 
 function get(type: string): WebviewAssetPlugin | undefined {
-  return registry.get(type);
+  // Check editor registry first, then tool registry
+  return editorRegistry.get(type) ?? toolRegistry.get(type);
 }
 
-export const resolvePlugin = { register, get };
+export const resolvePlugin = { register, registerTool, get };

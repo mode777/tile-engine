@@ -9,7 +9,8 @@ export default defineConfig({
   plugins: [solidPlugin()],
   resolve: {
     alias: {
-      "@protocol": path.resolve(__dirname, "../extension/src/protocol")
+      "@protocol": path.resolve(__dirname, "../extension/src/protocol"),
+      "@common": path.resolve(__dirname, "../common/src")
     }
   },
   build: {

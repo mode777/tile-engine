@@ -93,6 +93,10 @@ export class AssetEditorProvider
             await this.handleReadImage(webview, document.uri, message.requestId, message.relativePath);
             break;
           }
+          case "pickFile": {
+            await this.handlePickFile(webview, document.uri, message.requestId, message.options);
+            break;
+          }
           default: {
             // No-op for unknown messages to keep the channel resilient.
             break;
@@ -174,7 +178,7 @@ export class AssetEditorProvider
       `img-src ${webview.cspSource} blob: data:`,
       `style-src 'nonce-${nonce}' 'unsafe-inline' ${webview.cspSource}`,
       `script-src 'nonce-${nonce}'`,
-      `connect-src ${webview.cspSource} https://*.vscode-cdn.net https://file+.vscode-resource.vscode-cdn.net`
+      `connect-src ${webview.cspSource} https://*.vscode-cdn.net`
     ].join("; ");
 
     return `<!DOCTYPE html>
@@ -188,7 +192,7 @@ export class AssetEditorProvider
 <body>
   <div id="root"></div>
   <script nonce="${nonce}">window.__webviewNonce__ = "${nonce}";</script>
-  <script nonce="${nonce}" src="${scriptUri}"></script>
+  <script nonce="${nonce}" type="module" src="${scriptUri}"></script>
 </body>
 </html>`;
   }
@@ -200,10 +204,10 @@ export class AssetEditorProvider
     relativePath: string
   ): Promise<void> {
     try {
-      // Prevent directory traversal attacks
+      // Ensure path is relative for portability
       const normalized = path.normalize(relativePath);
-      if (normalized.startsWith("..") || path.isAbsolute(normalized)) {
-        throw new Error("Invalid path: cannot read files outside the document directory");
+      if (path.isAbsolute(normalized)) {
+        throw new Error("Invalid path: must use relative paths for portability");
       }
 
       const docDir = vscode.Uri.joinPath(documentUri, "..");
@@ -237,10 +241,10 @@ export class AssetEditorProvider
     relativePath: string
   ): Promise<void> {
     try {
-      // Prevent directory traversal attacks
+      // Ensure path is relative for portability
       const normalized = path.normalize(relativePath);
-      if (normalized.startsWith("..") || path.isAbsolute(normalized)) {
-        throw new Error("Invalid path: cannot read files outside the document directory");
+      if (path.isAbsolute(normalized)) {
+        throw new Error("Invalid path: must use relative paths for portability");
       }
 
       const docDir = vscode.Uri.joinPath(documentUri, "..");
@@ -284,6 +288,68 @@ export class AssetEditorProvider
       ".ico": "image/x-icon"
     };
     return mimeTypes[ext] || "application/octet-stream";
+  }
+
+  private async handlePickFile(
+    webview: vscode.Webview,
+    documentUri: vscode.Uri,
+    requestId: string,
+    options?: {
+      canSelectMany?: boolean;
+      openLabel?: string;
+      filters?: Record<string, string[]>;
+      defaultUri?: string;
+    }
+  ): Promise<void> {
+    try {
+      const docDir = vscode.Uri.joinPath(documentUri, "..");
+      
+      const pickerOptions: vscode.OpenDialogOptions = {
+        canSelectMany: options?.canSelectMany ?? false,
+        openLabel: options?.openLabel ?? "Select",
+        defaultUri: options?.defaultUri ? vscode.Uri.file(options.defaultUri) : docDir
+      };
+
+      if (options?.filters) {
+        pickerOptions.filters = options.filters;
+      }
+
+      const result = await vscode.window.showOpenDialog(pickerOptions);
+
+      if (result && result.length > 0) {
+        // Convert absolute URIs to paths relative to the document directory for portability
+        const relativePaths = result.map(uri => {
+          const relative = path.relative(docDir.fsPath, uri.fsPath);
+          // Normalize to forward slashes for consistency
+          return relative.replace(/\\/g, "/");
+        });
+
+        const message: HostToWebviewMessage = {
+          kind: "filePicked",
+          requestId,
+          success: true,
+          paths: relativePaths
+        };
+        webview.postMessage(message);
+      } else {
+        // User cancelled
+        const message: HostToWebviewMessage = {
+          kind: "filePicked",
+          requestId,
+          success: false,
+          error: "File selection cancelled"
+        };
+        webview.postMessage(message);
+      }
+    } catch (error) {
+      const message: HostToWebviewMessage = {
+        kind: "filePicked",
+        requestId,
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error picking file"
+      };
+      webview.postMessage(message);
+    }
   }
 }
 

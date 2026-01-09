@@ -8,6 +8,7 @@ export interface PluginMetadata {
   type: string;
   title: string;
   description?: string;
+  readonly?: boolean;
 }
 
 export type HostToWebviewMessage =
@@ -15,6 +16,10 @@ export type HostToWebviewMessage =
       kind: "init";
       documentUri: string;
       content: AssetJson;
+      plugin: PluginMetadata;
+    }
+  | {
+      kind: "initTool";
       plugin: PluginMetadata;
     }
   | {
@@ -48,6 +53,53 @@ export type HostToWebviewMessage =
       requestId: string;
       success: false;
       error: string;
+    }
+  | {
+      kind: "filePicked";
+      requestId: string;
+      success: true;
+      paths: string[];
+    }
+  | {
+      kind: "filePicked";
+      requestId: string;
+      success: false;
+      error: string;
+    }
+  | {
+      kind: "workspaceFileContent";
+      requestId: string;
+      success: true;
+      content: string;
+    }
+  | {
+      kind: "workspaceFileContent";
+      requestId: string;
+      success: false;
+      error: string;
+    }
+  | {
+      kind: "workspaceFileWritten";
+      requestId: string;
+      success: true;
+    }
+  | {
+      kind: "workspaceFileWritten";
+      requestId: string;
+      success: false;
+      error: string;
+    }
+  | {
+      kind: "saveDialogResult";
+      requestId: string;
+      success: true;
+      path: string | null;
+    }
+  | {
+      kind: "saveDialogResult";
+      requestId: string;
+      success: false;
+      error: string;
     };
 
 export type WebviewToHostMessage =
@@ -66,6 +118,41 @@ export type WebviewToHostMessage =
       kind: "readImage";
       requestId: string;
       relativePath: string;
+    }
+  | {
+      kind: "pickFile";
+      requestId: string;
+      options?: {
+        canSelectMany?: boolean;
+        openLabel?: string;
+        filters?: Record<string, string[]>;
+        defaultUri?: string;
+      };
+    }
+  | {
+      kind: "readWorkspaceFile";
+      requestId: string;
+      path: string;
+      encoding: "text" | "binary";
+    }
+  | {
+      kind: "writeWorkspaceFile";
+      requestId: string;
+      path: string;
+      content: string;
+      encoding: "text" | "binary";
+    }
+  | {
+      kind: "showSaveDialog";
+      requestId: string;
+      filters?: Record<string, string[]>;
+      defaultUri?: string;
+      defaultFilename?: string;
+    }
+  | {
+      kind: "showNotification";
+      type: "info" | "warning" | "error";
+      message: string;
     };
 
 export function isAssetJson(value: unknown): value is AssetJson {

@@ -26,6 +26,20 @@
         ],
         "priority": "default"
       }
+    ],
+    "commands": [
+      {
+        "command": "tile-engine.tools.generateAsset",
+        "title": "Tile Engine: Generate Asset"
+      },
+      {
+        "command": "tile-engine.tools.spriteFont",
+        "title": "Tile Engine: Sprite Font Generator"
+      },
+      {
+        "command": "tile-engine.tools.createTileset",
+        "title": "Tile Engine: Create Tileset"
+      }
     ]
   },
   "scripts": {

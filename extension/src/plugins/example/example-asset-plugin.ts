@@ -9,6 +9,7 @@ export interface ExampleAsset extends AssetData {
 
 export const exampleAssetPlugin: AssetEditorPlugin<ExampleAsset> = {
   metadata: {
+    mode: "editor",
     type: "example",
     title: "Example Asset",
     description: "Demonstration plugin for Tile Engine assets."

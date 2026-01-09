@@ -2,7 +2,7 @@ import type { Component } from "solid-js";
 import { createSignal, Show } from "solid-js";
 import type { AssetJson } from "@protocol/messages";
 import type { PluginComponentProps, WebviewAssetPlugin } from "../registry";
-import { readFile, readImage } from "../../file-utils";
+import { readFile, readImage, pickFile } from "../../file-utils";
 
 export type ExampleAsset = AssetJson & {
   type: "example";
@@ -62,6 +62,43 @@ const ExampleAssetComponent: Component<PluginComponentProps<ExampleAsset>> = (
     }
   };
 
+  const browseForFile = async () => {
+    setError(null);
+    try {
+      const paths = await pickFile({
+        openLabel: "Select File",
+        filters: {
+          "JSON Files": ["json"],
+          "Text Files": ["txt", "md"],
+          "All Files": ["*"]
+        }
+      });
+      if (paths.length > 0) {
+        update({ linkedFile: paths[0] });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to pick file");
+    }
+  };
+
+  const browseForImage = async () => {
+    setError(null);
+    try {
+      const paths = await pickFile({
+        openLabel: "Select Image",
+        filters: {
+          "Images": ["png", "jpg", "jpeg", "gif", "webp", "svg"],
+          "All Files": ["*"]
+        }
+      });
+      if (paths.length > 0) {
+        update({ imagePath: paths[0] });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to pick image");
+    }
+  };
+
   return (
     <div class="example-plugin">
       <label class="field">
@@ -92,11 +129,16 @@ const ExampleAssetComponent: Component<PluginComponentProps<ExampleAsset>> = (
 
       <label class="field">
         <span>Linked File Path (relative, e.g., "../config.json")</span>
-        <input
-          value={current().linkedFile ?? ""}
-          placeholder="e.g., ../data.json"
-          onInput={(event) => update({ linkedFile: event.currentTarget.value })}
-        />
+        <div class="input-with-button">
+          <input
+            value={current().linkedFile ?? ""}
+            placeholder="e.g., ../data.json"
+            onInput={(event) => update({ linkedFile: event.currentTarget.value })}
+          />
+          <button onClick={browseForFile} class="browse-button">
+            Browse...
+          </button>
+        </div>
         <button onClick={loadLinkedFile} disabled={!current().linkedFile || loading()}>
           {loading() ? "Loading..." : "Load File"}
         </button>
@@ -112,11 +154,16 @@ const ExampleAssetComponent: Component<PluginComponentProps<ExampleAsset>> = (
 
       <label class="field">
         <span>Image Path (relative, e.g., "../assets/icon.png")</span>
-        <input
-          value={current().imagePath ?? ""}
-          placeholder="e.g., ../assets/preview.png"
-          onInput={(event) => update({ imagePath: event.currentTarget.value })}
-        />
+        <div class="input-with-button">
+          <input
+            value={current().imagePath ?? ""}
+            placeholder="e.g., ../assets/preview.png"
+            onInput={(event) => update({ imagePath: event.currentTarget.value })}
+          />
+          <button onClick={browseForImage} class="browse-button">
+            Browse...
+          </button>
+        </div>
         <button onClick={loadImage} disabled={!current().imagePath || loading()}>
           {loading() ? "Loading..." : "Load Image"}
         </button>
@@ -156,6 +203,26 @@ const styles = `
   color: var(--vscode-input-foreground);
   padding: 0.35rem 0.5rem;
   border-radius: 4px;
+}
+.input-with-button {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+.input-with-button input {
+  flex: 1;
+}
+.browse-button {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 4px;
+  padding: 0.35rem 0.75rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.browse-button:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
 }
 .field button {
   background: var(--vscode-button-background);
