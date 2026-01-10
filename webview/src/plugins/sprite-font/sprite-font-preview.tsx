@@ -1,8 +1,8 @@
 import { createSignal, onMount, createEffect, Show, type Component } from "solid-js";
 import type { SpriteFontAsset as BaseSpriteFont } from "@common/sprite-font";
 import { layoutText } from "@common/sprite-font-layout";
+import { MessageService } from "../../services/message-service";
 import type { PluginComponentProps, WebviewAssetPlugin } from "../registry";
-import { readImage } from "../../file-utils";
 import type { AssetJson } from "@protocol/messages";
 
 // Add index signature to satisfy AssetJson constraint
@@ -23,7 +23,7 @@ const SpriteFontPreviewComponent: Component<PluginComponentProps<SpriteFontAsset
     try {
       setIsLoading(true);
       setLoadError(null);
-      const imgDataUrl = await readImage(props.value.image);
+      const imgDataUrl = await MessageService.instance.readImage(props.value.image);
       
       const imgElement = new Image();
       imgElement.onload = () => {

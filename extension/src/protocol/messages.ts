@@ -11,6 +11,11 @@ export interface PluginMetadata {
   readonly?: boolean;
 }
 
+export interface DirectoryEntry {
+  name: string;
+  isDirectory: boolean;
+}
+
 export type HostToWebviewMessage =
   | {
       kind: "init";
@@ -88,6 +93,18 @@ export type HostToWebviewMessage =
       requestId: string;
       success: false;
       error: string;
+    }
+  | {
+      kind: "directoryListing";
+      requestId: string;
+      success: true;
+      entries: DirectoryEntry[];
+    }
+  | {
+      kind: "directoryListing";
+      requestId: string;
+      success: false;
+      error: string;
     };
 
 export type WebviewToHostMessage =
@@ -136,6 +153,11 @@ export type WebviewToHostMessage =
       kind: "showNotification";
       type: "info" | "warning" | "error";
       message: string;
+    }
+  | {
+      kind: "getDirectory";
+      requestId: string;
+      dirPath: string;
     };
 
 export function isAssetJson(value: unknown): value is AssetJson {

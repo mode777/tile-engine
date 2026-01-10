@@ -20,307 +20,57 @@ Production-ready VS Code extension that provides a custom editor for `.asset` JS
     extension/src/plugins                  webview/src/plugins
 ```
 
-### Plugin Types
+### Plugin System
 
-The extension now supports **two types of plugins**:
+The extension uses a **compile-time plugin registry** with three plugin types: Editor Plugins, Standalone Tools, and Headless Tools. All plugins are registered explicitly in `extension/src/plugin-system/plugin-registry-setup.ts` at compile-time.
 
-1. **Editor Plugins** (mode: `"editor"`): File-based custom editors that open and edit `.asset` files
-   - Activated when opening files matching `*.asset`
-   - Tied to a specific document/file
-   - Support save/revert operations
-   - File operations are relative to the document's directory
-
-2. **Standalone Tools** (mode: `"tool"`): Command-triggered webviews that perform workspace-wide operations
-   - Activated via Command Palette (e.g., "Tile Engine: Generate Asset")
-   - Not tied to any specific file
-   - Can read/write any workspace file using absolute or workspace-relative paths
-   - Singleton instances (re-opening focuses existing panel)
-   - Support lifecycle hooks (`onOpen`, `onClose`)
-
-### Custom Editor Flow (Editor Plugins)
-- User opens `*.asset` → `AssetEditorProvider` loads JSON via `AssetDocument`.
-- Provider resolves plugin by `json.type` using the compile-time registry.
-- WebView is created, HTML points to built `webview/dist/index.js`.
-- WebView posts `ready`; host replies with `init` (document URI, parsed content, plugin metadata).
-- Plugin UI renders content, emits `contentChanged`; host marks document dirty and handles saves.
-- Host pushes `applyContent` when the file is reverted/saved externally to keep UI in sync.
-
-### Standalone Tool Flow (Tool Plugins)
-- User executes command via Command Palette (e.g., "Tile Engine: Generate Asset").
-- Extension checks if tool panel is already open; if so, focuses it (singleton behavior).
-- Otherwise, creates new webview panel with `StandaloneToolProvider`.
-- WebView posts `ready`; host replies with `initTool` (plugin metadata only, no document).
-- Tool UI renders without save button or document toolbar.
-- Tool can use workspace file APIs (`readWorkspaceFile`, `writeWorkspaceFile`, `showSaveDialog`).
-- Lifecycle hooks (`onOpen`, `onClose`) are invoked when panel opens/closes.
-
-### Plugin Resolution
-- Plugins are registered at **compile-time in a single location**: `extension/src/plugin-system/plugin-registry-setup.ts`
-- No runtime discovery; all plugins must be explicitly imported and initialized during activation.
-- Host registry access via `extension/src/plugin-system/registry.ts`:
-  - Editor plugins: `getPluginDescriptor(type)`, `listPlugins()`, `hasPlugin(type)`, `getDefaultContentForType(type)`
-  - Standalone tools: `getToolPlugins()`, `getToolPlugin(type)`
-  - Headless tools: `getHeadlessTools()`, `getHeadlessTool(type)`
-- WebView runtime registry: `webview/src/plugins/registry.ts`
-  - Editor plugins: `resolvePlugin.register(plugin)`
-  - Standalone tools: `resolvePlugin.registerTool(plugin)`
-  - Lookup: `resolvePlugin.get(type)` (checks both registries)
+**→ See [Authoring Plugins](docs/authoring-plugins.md)** for complete documentation on plugin architecture, lifecycle, development workflow, and step-by-step examples for each plugin type.
 
 ### Messaging Protocol
-Defined in `extension/src/protocol/messages.ts` and shared with the WebView via Vite alias `@protocol`.
 
-**Host → WebView:**
-- `init`: Initialize editor with document content and plugin metadata
-- `initTool`: Initialize standalone tool with plugin metadata (no document)
-- `applyContent`: Sync external changes to editor content
-- `error`: Display error message
-- `fileContent`, `imageData`, `filePicked`: File operation responses (editor mode)
-- `workspaceFileContent`, `workspaceFileWritten`: Workspace file operation responses (tool mode)
-- `saveDialogResult`: Save dialog result (tool mode)
+Webview-to-host communication is handled via `MessageService`, a singleton that provides async request-response patterns with automatic timeout management.
 
-**WebView → Host:**
-- `ready`: Webview initialized and ready
-- `contentChanged`: User edited content (editor mode)
-- `requestSave`: Request explicit save (editor mode)
-- `readFile`, `readImage`, `pickFile`: File operations relative to document (editor mode)
-- `readWorkspaceFile`, `writeWorkspaceFile`: Workspace-wide file operations (tool mode)
-- `showSaveDialog`: Show native save dialog with filters (tool mode)
-- `showNotification`: Display VS Code notification toast (tool mode)
+**→ See [MessageService API Documentation](docs/message-service-api.md)** for complete API reference, all available operations, error handling, and path handling details (document-relative for editors, workspace-relative for tools).
 
-### Adding a New Editor Plugin
-1. **Host metadata**: Create `extension/src/plugins/<category>/<your-plugin>.ts` exporting `AssetEditorPlugin` with:
-   ```typescript
-   import { AssetEditorPlugin } from "../../plugin-system/types";
-
-   export interface YourAsset extends AssetData {
-     type: "your-type";
-     // ... additional fields
-   }
-
-   export const yourPlugin: AssetEditorPlugin<YourAsset> = {
-     metadata: {
-       mode: "editor",
-       type: "your-type",
-       title: "Your Asset",
-       description: "Description of your asset type"
-     },
-     createDefault: () => ({ type: "your-type", /* ... */ })
-   };
-   ```
-
-2. **Register in plugin-system**: Add import and registration in `extension/src/plugin-system/plugin-registry-setup.ts`:
-   ```typescript
-   import { yourPlugin } from "../plugins/<category>/<your-plugin>";
-   
-   // Inside setupPluginRegistry():
-   const editorPlugins: AssetEditorPlugin[] = [
-     // ... existing plugins
-     yourPlugin
-   ];
-   ```
-
-3. **WebView UI**: Create `webview/src/plugins/<category>/<your-plugin>.tsx` exporting `WebviewAssetPlugin` with Solid component.
-
-4. **Data contract**: Ensure your JSON includes `{"type": "your-type"}` and any additional fields.
-
-5. **Build**: Rebuild WebView (`npm run build` in `webview`) and extension (`npm run compile` in `extension`).
-
-### Adding a New Standalone Tool
-1. **Host metadata**: Create `extension/src/plugins/<category>/<your-tool>.ts` exporting `StandaloneToolPlugin`:
-   ```typescript
-   import { StandaloneToolPlugin } from "../../plugin-system/types";
-
-   export const yourTool: StandaloneToolPlugin = {
-     metadata: {
-       mode: "tool",
-       type: "your-tool",
-       commandId: "tile-engine.tools.yourTool", // Must start with "tile-engine.tools."
-       title: "Your Tool Name",
-       description: "Description of your tool"
-     },
-     onOpen: async () => { /* Optional initialization */ },
-     onClose: () => { /* Optional cleanup */ }
-   };
-   ```
-
-2. **Register in plugin-system**: Add import and registration in `extension/src/plugin-system/plugin-registry-setup.ts`:
-   ```typescript
-   import { yourTool } from "../plugins/<category>/<your-tool>";
-   
-   // Inside setupPluginRegistry():
-   const toolPlugins: StandaloneToolPlugin[] = [
-     // ... existing tools
-     yourTool
-   ];
-   ```
-
-3. **WebView UI**: Create `webview/src/plugins/<category>/<your-tool>.tsx` exporting `WebviewAssetPlugin`:
-   ```tsx
-   export const yourToolPlugin: WebviewAssetPlugin<YourToolData> = {
-     metadata: { type: "your-tool", title: "Your Tool Name" },
-     Component: YourToolComponent
-   };
-   ```
-   Register it in `webview/src/plugins/registry.ts` in the `registeredToolPlugins` array.
-
-4. **Command registration**: Add the command to `extension/package.json`:
-   ```json
-   {
-     "contributes": {
-       "commands": [
-         {
-           "command": "tile-engine.tools.yourTool",
-           "title": "Tile Engine: Your Tool Name"
-         }
-       ]
-     }
-   }
-   ```
-
-5. **Build**: Rebuild WebView and extension as above.
-### Adding a New Headless Tool
-1. **Host metadata**: Create `extension/src/plugins/<category>/<your-tool>.ts` exporting `HeadlessTool`:
-   ```typescript
-   import * as vscode from "vscode";
-   import { HeadlessTool } from "../../plugin-system/types";
-
-   export const yourTool: HeadlessTool = {
-     metadata: {
-       mode: "headless",
-       type: "your-tool",
-       commandId: "tile-engine.tools.yourTool", // Must start with "tile-engine.tools."
-       title: "Your Tool Name",
-       description: "Description of your tool"
-     },
-     execute: async (context: vscode.ExtensionContext) => {
-       // Execute tool logic directly
-       // Use VS Code APIs: vscode.window.showSaveDialog(), vscode.window.showInputBox(), etc.
-       const userInput = await vscode.window.showInputBox({ prompt: "Enter value:" });
-       if (userInput) {
-         // Perform operations...
-         vscode.window.showInformationMessage(`Done: ${userInput}`);
-       }
-     }
-   };
-   ```
-
-2. **Register in plugin-system**: Add import and registration in `extension/src/plugin-system/plugin-registry-setup.ts`:
-   ```typescript
-   import { yourTool } from "../plugins/<category>/<your-tool>";
-   
-   // Inside setupPluginRegistry():
-   const headlessTools: HeadlessTool[] = [
-     // ... existing tools
-     yourTool
-   ];
-   ```
-
-3. **Command registration**: Add the command to `extension/package.json`:
-   ```json
-   {
-     "contributes": {
-       "commands": [
-         {
-           "command": "tile-engine.tools.yourTool",
-           "title": "Tile Engine: Your Tool Name"
-         }
-       ]
-     }
-   }
-   ```
-
-4. **Build**: Rebuild the extension (`npm run compile` in `extension`). No webview build is needed.
-
-
-### File and Image Reading (Editor Mode)
-Editor plugins can read files and images relative to the currently edited document using the `file-utils` module:
-
+**Quick example:**
 ```typescript
-import { readFile, readImage, pickFile } from "./file-utils";
+import { MessageService } from "./services/message-service";
 
-// Read a text file relative to the document directory
-const content = await readFile("../sibling-file.json");
+// Read a file (relative to document in editor, workspace in tool)
+const content = await MessageService.instance.readFile("data.json");
 
-// Read an image and get a data URL for display
-const dataUrl = await readImage("../assets/icon.png");
+// Write a file
+await MessageService.instance.writeFile("output.json", jsonString);
 
-// Show VS Code's native file picker
-const paths = await pickFile({
-  canSelectMany: false,
-  openLabel: "Select File",
-  filters: {
-    'Images': ['png', 'jpg', 'jpeg'],
-    'All Files': ['*']
-  }
-});
-// Returns array of paths relative to the document directory
+// Show file picker
+const files = await MessageService.instance.pickFile({ canSelectMany: true });
+
+// Show notification
+MessageService.instance.showNotification("info", "Operation complete");
 ```
-
-**Path Requirements:** All file operations use relative paths (starting from the document's directory) to ensure portability of asset files across different machines and operating systems.
-
-### Workspace File Operations (Tool Mode)
-Standalone tools can read and write files anywhere in the workspace using absolute or workspace-relative paths:
-
-```typescript
-import { 
-  readWorkspaceFile, 
-  writeWorkspaceFile, 
-  showSaveDialog,
-  showNotification 
-} from "./file-utils";
-
-// Read a workspace file (text)
-const content = await readWorkspaceFile("assets/data.json", "text");
-
-// Read a binary file (returns Base64 string)
-const binaryData = await readWorkspaceFile("images/icon.png", "binary");
-
-// Write a workspace file (text)
-await writeWorkspaceFile("output/result.json", JSON.stringify(data), "text");
-
-// Write a binary file (Base64 string)
-await writeWorkspaceFile("output/image.png", base64Data, "binary");
-
-// Show save dialog
-const savePath = await showSaveDialog({
-  filters: {
-    'Asset Files': ['asset'],
-    'JSON Files': ['json']
-  },
-  defaultFilename: "generated-asset.asset"
-});
-
-if (savePath) {
-  await writeWorkspaceFile(savePath, content, "text");
-  showNotification("info", `File saved to ${savePath}`);
-}
-```
-
-**Path Requirements:**
-- Paths can be absolute (e.g., `/Users/name/project/file.json`) or workspace-relative (e.g., `assets/data.json`)
-- Workspace-relative paths are resolved from the first workspace folder
-- Binary content is transferred as Base64 strings for JSON serialization
-
-**Save Dialog Options:**
-- `filters`: File type filters, e.g., `{ 'Images': ['png', 'jpg'], 'All Files': ['*'] }`
-- `defaultUri`: Default directory to open (absolute or workspace-relative)
-- `defaultFilename`: Suggested filename
-
-**Notifications:**
-- `showNotification(type, message)`: Display VS Code toast notification
-- Types: `"info"`, `"warning"`, `"error"`
-
-See `webview/src/plugins/example/asset-generator-tool.tsx` for a complete example.
 
 ## Documentation
 
-Resource guides for asset types and tools:
+Comprehensive guides and API references:
 
-- [Sprite Font Resource](docs/spritefont.md) — Generate bitmap spritesheets from TrueType/OpenType fonts
-  - How to access and use the sprite font generator tool
-  - Asset format reference and field documentation
-  - Tips for font selection, packing, and performance
-  - Example code for consuming sprite fonts in games/applications
+- **[Authoring Plugins](docs/authoring-plugins.md)** — Complete plugin development guide
+  - Plugin types (Editor, Standalone Tool, Headless Tool)
+  - Plugin lifecycle and flows
+  - Step-by-step guides for creating each plugin type
+  - Best practices and troubleshooting
+
+- **[MessageService API](docs/message-service-api.md)** — Webview-to-host communication
+  - File operations (read, write, image handling)
+  - Dialog operations (file picker, save dialog)
+  - Directory listing
+  - Notifications and lifecycle events
+  - Error handling and timeout management
+
+- **[Sprite Font Resource](docs/spritefont.md)** — Bitmap font generation
+  - How to access and use the sprite font generator
+  - Asset format reference
+  - Tips for font selection and packing
+  - Example code for consuming sprites
 
 More resource documentation will be added as new asset types are implemented.
 

@@ -1,8 +1,8 @@
 import type { Component } from "solid-js";
 import { createSignal, Show } from "solid-js";
 import type { AssetJson } from "@protocol/messages";
+import { MessageService } from "../../services/message-service";
 import type { PluginComponentProps, WebviewAssetPlugin } from "../registry";
-import { readFile, readImage, pickFile } from "../../file-utils";
 
 export type ExampleAsset = AssetJson & {
   type: "example";
@@ -39,7 +39,7 @@ const ExampleAssetComponent: Component<PluginComponentProps<ExampleAsset>> = (
     setLoading(true);
     setError(null);
     try {
-      const content = await readFile(current().linkedFile!);
+      const content = await MessageService.instance.readFile(current().linkedFile!);
       setLinkedFileContent(content);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load file");
@@ -53,7 +53,7 @@ const ExampleAssetComponent: Component<PluginComponentProps<ExampleAsset>> = (
     setLoading(true);
     setError(null);
     try {
-      const dataUrl = await readImage(current().imagePath!);
+      const dataUrl = await MessageService.instance.readImage(current().imagePath!);
       setImageDataUrl(dataUrl);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load image");
@@ -65,7 +65,7 @@ const ExampleAssetComponent: Component<PluginComponentProps<ExampleAsset>> = (
   const browseForFile = async () => {
     setError(null);
     try {
-      const paths = await pickFile({
+      const paths = await MessageService.instance.pickFile({
         openLabel: "Select File",
         filters: {
           "JSON Files": ["json"],
@@ -84,7 +84,7 @@ const ExampleAssetComponent: Component<PluginComponentProps<ExampleAsset>> = (
   const browseForImage = async () => {
     setError(null);
     try {
-      const paths = await pickFile({
+      const paths = await MessageService.instance.pickFile({
         openLabel: "Select Image",
         filters: {
           "Images": ["png", "jpg", "jpeg", "gif", "webp", "svg"],

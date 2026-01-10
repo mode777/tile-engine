@@ -1,8 +1,8 @@
 import type { Component } from "solid-js";
 import { createSignal } from "solid-js";
 import type { AssetJson } from "@protocol/messages";
+import { MessageService } from "../../services/message-service";
 import type { PluginComponentProps, WebviewAssetPlugin } from "../registry";
-import { showSaveDialog, writeWorkspaceFile, showNotification } from "../../file-utils";
 
 export type AssetGeneratorData = AssetJson & {
   type: "asset-generator";
@@ -25,7 +25,7 @@ const AssetGeneratorComponent: Component<PluginComponentProps<AssetGeneratorData
       };
 
       // Show save dialog
-      const savePath = await showSaveDialog({
+      const savePath = await MessageService.instance.showSaveDialog({
         filters: {
           "Asset Files": ["asset"],
           "JSON Files": ["json"]
@@ -35,18 +35,18 @@ const AssetGeneratorComponent: Component<PluginComponentProps<AssetGeneratorData
 
       if (!savePath) {
         // User cancelled
-        showNotification("info", "Asset generation cancelled");
+        MessageService.instance.showNotification("info", "Asset generation cancelled");
         return;
       }
 
       // Write the file
       const content = JSON.stringify(assetData, null, 2);
-      await writeWorkspaceFile(savePath, content, "text");
+      await MessageService.instance.writeFile(savePath, content, "text");
 
-      showNotification("info", `Asset saved to ${savePath}`);
+      MessageService.instance.showNotification("info", `Asset saved to ${savePath}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to generate asset";
-      showNotification("error", message);
+      MessageService.instance.showNotification("error", message);
     } finally {
       setGenerating(false);
     }

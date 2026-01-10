@@ -18,7 +18,7 @@ export class CommonHandler {
 
   /**
    * Dispatch messages to appropriate handlers.
-   * Handles common messages (pickFile, showNotification, readFile, readImage, writeFile).
+   * Handles common messages (pickFile, showNotification, readFile, readImage, writeFile, getDirectory).
    * Subclasses should override to handle their own messages and call super.dispatch() for unhandled ones.
    */
   async dispatch(message: WebviewToHostMessage): Promise<void> {
@@ -42,6 +42,9 @@ export class CommonHandler {
           message.content,
           message.encoding
         );
+        break;
+      case "getDirectory":
+        await this.handleGetDirectory(message.requestId, message.dirPath);
         break;
       default:
         // Subclasses should handle other message types
@@ -127,11 +130,12 @@ export class CommonHandler {
     encoding: "text" | "binary" = "text"
   ): Promise<void> {
     try {
-      const normalized = normalizeRelativePath(filePath);
-      const targetUri = vscode.Uri.joinPath(
-        this.pathContext.getBaseUri(),
-        normalized
-      );
+      const targetUri = path.isAbsolute(filePath)
+        ? vscode.Uri.file(filePath)
+        : vscode.Uri.joinPath(
+            this.pathContext.getBaseUri(),
+            normalizeRelativePath(filePath)
+          );
 
       const bytes = await vscode.workspace.fs.readFile(targetUri);
       const content = encoding === "binary" 
@@ -162,11 +166,12 @@ export class CommonHandler {
     filePath: string
   ): Promise<void> {
     try {
-      const normalized = normalizeRelativePath(filePath);
-      const targetUri = vscode.Uri.joinPath(
-        this.pathContext.getBaseUri(),
-        normalized
-      );
+      const targetUri = path.isAbsolute(filePath)
+        ? vscode.Uri.file(filePath)
+        : vscode.Uri.joinPath(
+            this.pathContext.getBaseUri(),
+            normalizeRelativePath(filePath)
+          );
 
       const bytes = await vscode.workspace.fs.readFile(targetUri);
       const base64 = Buffer.from(bytes).toString("base64");
@@ -201,11 +206,12 @@ export class CommonHandler {
     encoding: "text" | "binary"
   ): Promise<void> {
     try {
-      const normalized = normalizeRelativePath(filePath);
-      const targetUri = vscode.Uri.joinPath(
-        this.pathContext.getBaseUri(),
-        normalized
-      );
+      const targetUri = path.isAbsolute(filePath)
+        ? vscode.Uri.file(filePath)
+        : vscode.Uri.joinPath(
+            this.pathContext.getBaseUri(),
+            normalizeRelativePath(filePath)
+          );
 
       let data: Uint8Array;
       if (encoding === "binary") {
@@ -232,6 +238,43 @@ export class CommonHandler {
   }
 
   /**
+   * Handle directory listing - shared across all handler types.
+   */
+  protected async handleGetDirectory(
+    requestId: string,
+    dirPath: string
+  ): Promise<void> {
+    try {
+      const targetUri = path.isAbsolute(dirPath)
+        ? vscode.Uri.file(dirPath)
+        : vscode.Uri.joinPath(
+            this.pathContext.getBaseUri(),
+            normalizeRelativePath(dirPath)
+          );
+
+      const entries = await vscode.workspace.fs.readDirectory(targetUri);
+      const directoryEntries = entries.map(([name, fileType]) => ({
+        name,
+        isDirectory: fileType === vscode.FileType.Directory
+      }));
+
+      const response: HostToWebviewMessage = {
+        kind: "directoryListing",
+        requestId,
+        success: true,
+        entries: directoryEntries
+      };
+      this.postMessage(response);
+    } catch (error) {
+      this.postError(
+        "directoryListing",
+        requestId,
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  }
+
+  /**
    * Send a message to the webview.
    */
   protected postMessage(message: HostToWebviewMessage): void {
@@ -242,7 +285,7 @@ export class CommonHandler {
    * Send an error response to the webview.
    */
   protected postError(
-    kind: "filePicked" | "fileContent" | "imageData" | "fileWritten" | "saveDialogResult",
+    kind: "filePicked" | "fileContent" | "imageData" | "fileWritten" | "saveDialogResult" | "directoryListing",
     requestId: string,
     error: string
   ): void {

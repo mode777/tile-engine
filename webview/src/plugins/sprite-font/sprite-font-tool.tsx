@@ -2,6 +2,7 @@ import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 import type { Component } from "solid-js";
 import opentype, { type Font, type Glyph } from "opentype.js";
 import type { AssetJson } from "@protocol/messages";
+import { MessageService } from "../../services/message-service";
 import type { PluginComponentProps, WebviewAssetPlugin } from "../registry";
 import type {
   SpriteFontAsset,
@@ -10,13 +11,6 @@ import type {
   FontStyle,
   FontWeight
 } from "@common/sprite-font";
-import {
-  pickFile,
-  readWorkspaceFile,
-  showNotification,
-  showSaveDialog,
-  writeWorkspaceFile
-} from "../../file-utils";
 
 const PAGE_SIZE = 256;
 const REQUIRED_PRESETS = ["digits", "upper", "lower", "whitespace"] as const;
@@ -322,7 +316,7 @@ const SpriteFontToolComponent: Component<PluginComponentProps<SpriteFontValue>> 
     try {
       setBusy(true);
       setStatus("Opening font picker…");
-      const [picked] = await pickFile({
+      const [picked] = await MessageService.instance.pickFile({
         filters: { Fonts: ["ttf", "otf"] },
         canSelectMany: false
       });
@@ -331,7 +325,7 @@ const SpriteFontToolComponent: Component<PluginComponentProps<SpriteFontValue>> 
         return;
       }
 
-      const binary = await readWorkspaceFile(picked, "binary");
+      const binary = await MessageService.instance.readFile(picked, "binary");
       const bytes = base64ToUint8Array(binary);
       const parsed = opentype.parse(bytes.buffer);
 
@@ -354,7 +348,7 @@ const SpriteFontToolComponent: Component<PluginComponentProps<SpriteFontValue>> 
       setStatus(`Loaded font ${name}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to load font";
-      showNotification("error", message);
+      MessageService.instance.showNotification("error", message);
       setStatus(message);
       setFont(null);
       setFontFamily(null);
@@ -633,7 +627,7 @@ const SpriteFontToolComponent: Component<PluginComponentProps<SpriteFontValue>> 
     try {
       const f = font();
       if (!f || !fontFamily()) {
-        showNotification("warning", "Load a font before exporting.");
+        MessageService.instance.showNotification("warning", "Load a font before exporting.");
         return;
       }
       setBusy(true);
@@ -661,7 +655,7 @@ const SpriteFontToolComponent: Component<PluginComponentProps<SpriteFontValue>> 
       const atlas = buildAtlas(placements);
 
       setStatus("Saving files…");
-      const savePath = await showSaveDialog({
+      const savePath = await MessageService.instance.showSaveDialog({
         filters: { PNG: ["png"], "All Files": ["*"] },
         defaultFilename: "sprite-font.png"
       });
@@ -677,7 +671,7 @@ const SpriteFontToolComponent: Component<PluginComponentProps<SpriteFontValue>> 
 
       const pngData = atlas.stacked.toDataURL("image/png");
       const pngBase64 = pngData.split(",")[1];
-      await writeWorkspaceFile(pngPath, pngBase64, "binary");
+      await MessageService.instance.writeFile(pngPath, pngBase64, "binary");
 
       const glyphRecord: Record<string, GlyphMetrics> = {};
       for (const glyph of placements) {
@@ -707,13 +701,13 @@ const SpriteFontToolComponent: Component<PluginComponentProps<SpriteFontValue>> 
         pages: { width: PAGE_SIZE, height: PAGE_SIZE * atlas.pageCount }
       };
 
-      await writeWorkspaceFile(assetPath, JSON.stringify(metadata, null, 2), "text");
+      await MessageService.instance.writeFile(assetPath, JSON.stringify(metadata, null, 2), "text");
 
-      showNotification("info", `Saved spritesheet to ${pngPath} and metadata to ${assetPath}`);
+      MessageService.instance.showNotification("info", `Saved spritesheet to ${pngPath} and metadata to ${assetPath}`);
       setStatus(`Exported ${placements.length} glyphs over ${atlas.pageCount} pages.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Export failed";
-      showNotification("error", message);
+      MessageService.instance.showNotification("error", message);
       setStatus(message);
     } finally {
       setBusy(false);

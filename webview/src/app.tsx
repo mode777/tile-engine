@@ -2,16 +2,14 @@ import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
 import type { JSX } from "solid-js";
 import type {
   AssetJson,
-  HostToWebviewMessage,
-  PluginMetadata,
-  WebviewToHostMessage
+  PluginMetadata
 } from "@protocol/messages";
+import { MessageService } from "./services/message-service";
 import { resolvePlugin, type WebviewAssetPlugin } from "./plugins/registry";
 import { examplePlugin } from "./plugins/example/example-asset-plugin";
 import { assetGeneratorPlugin } from "./plugins/example/asset-generator-tool";
 import { spriteFontPlugin } from "./plugins/sprite-font/sprite-font-tool";
 import { spriteFontPreviewPlugin } from "./plugins/sprite-font/sprite-font-preview";
-import { handleFileUtilsMessage, vscode } from "./file-utils";
 
 // Ensure plugins are registered at module load time.
 const registeredEditorPlugins: WebviewAssetPlugin<AssetJson>[] = [
@@ -29,12 +27,6 @@ registeredToolPlugins.forEach((plugin) => resolvePlugin.registerTool(plugin));
 const cspNonce = (window as typeof window & { __webviewNonce__?: string })
   .__webviewNonce__ ?? "";
 
-interface EditorState {
-  content: AssetJson | null;
-  plugin: PluginMetadata | null;
-  mode: "editor" | "tool";
-}
-
 export default function App(): JSX.Element {
   const [content, setContent] = createSignal<AssetJson | null>(null);
   const [pluginMeta, setPluginMeta] = createSignal<PluginMetadata | null>(null);
@@ -47,69 +39,58 @@ export default function App(): JSX.Element {
     return resolvePlugin.get(meta.type);
   });
 
-  const handleMessage = (event: MessageEvent<HostToWebviewMessage>) => {
-    const message = event.data;
-    switch (message.kind) {
-      case "init": {
-        setContent(message.content);
-        setPluginMeta(message.plugin);
-        setStatus("Editing asset");
-        setMode("editor");
-        vscode.setState({ content: message.content, plugin: message.plugin, mode: "editor" });
-        break;
-      }
-      case "initTool": {
-        setPluginMeta(message.plugin);
-        setStatus("Tool ready");
-        setMode("tool");
-        vscode.setState({ content: null, plugin: message.plugin, mode: "tool" });
-        break;
-      }
-      case "applyContent": {
-        setContent(message.content);
-        setStatus("Content synchronized");
-        vscode.setState({ content: message.content, plugin: pluginMeta(), mode: mode() });
-        break;
-      }
-      case "error": {
-        setStatus(`Error: ${message.message}`);
-        break;
-      }
-      case "fileContent":
-      case "imageData":
-      case "filePicked":
-      case "workspaceFileContent":
-      case "workspaceFileWritten":
-      case "saveDialogResult": {
-        // Handle file/image read responses and file picker results
-        handleFileUtilsMessage(message);
-        break;
-      }
-      default:
-        break;
-    }
-  };
-
   onMount(() => {
-    const cached = vscode.getState() as EditorState | undefined;
+    const cached = MessageService.instance.getState();
     if (cached?.content) {
       setContent(cached.content);
       setPluginMeta(cached.plugin ?? null);
       setMode(cached.mode ?? "editor");
     }
 
-    window.addEventListener("message", handleMessage as EventListener);
-    vscode.postMessage({ kind: "ready" });
-  });
+    // Subscribe to init event
+    const unsubscribeInit = MessageService.instance.onInit.on((data) => {
+      setContent(data.content);
+      setPluginMeta(data.plugin);
+      setStatus("Editing asset");
+      setMode("editor");
+      MessageService.instance.setState({ content: data.content, plugin: data.plugin, mode: "editor" });
+    });
 
-  onCleanup(() => {
-    window.removeEventListener("message", handleMessage as EventListener);
+    // Subscribe to initTool event
+    const unsubscribeInitTool = MessageService.instance.onInitTool.on((data) => {
+      setPluginMeta(data.plugin);
+      setStatus("Tool ready");
+      setMode("tool");
+      MessageService.instance.setState({ content: null, plugin: data.plugin, mode: "tool" });
+    });
+
+    // Subscribe to applyContent event
+    const unsubscribeApplyContent = MessageService.instance.onApplyContent.on((data) => {
+      setContent(data.content);
+      setStatus("Content synchronized");
+      MessageService.instance.setState({ content: data.content, plugin: pluginMeta(), mode: mode() });
+    });
+
+    // Subscribe to error event
+    const unsubscribeError = MessageService.instance.onError.on((data) => {
+      setStatus(`Error: ${data.message}`);
+    });
+
+    // Notify host that webview is ready
+    MessageService.instance.notifyReady();
+
+    onCleanup(() => {
+      unsubscribeInit();
+      unsubscribeInitTool();
+      unsubscribeApplyContent();
+      unsubscribeError();
+    });
   });
 
   const handleChange = (next: AssetJson) => {
     setContent(next);
-    vscode.setState({ content: next, plugin: pluginMeta(), mode: mode() });
-    vscode.postMessage({ kind: "contentChanged", content: next });
+    MessageService.instance.setState({ content: next, plugin: pluginMeta(), mode: mode() });
+    MessageService.instance.notifyContentChanged(next);
   };
 
   return (
@@ -123,7 +104,7 @@ export default function App(): JSX.Element {
           <Show when={!pluginMeta()?.readonly}>
             <button
               class="save"
-              onClick={() => vscode.postMessage({ kind: "requestSave" })}
+              onClick={() => MessageService.instance.notifyRequestSave()}
             >
               Save
             </button>
